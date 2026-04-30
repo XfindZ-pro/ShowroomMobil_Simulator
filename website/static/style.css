@@ -1,0 +1,35 @@
+/* === CUSTOM SCROLLBAR & ANIMATIONS (Not covered by default Tailwind) === */
+:root {
+    --accent-blue: #1d9bf0;
+    --accent-green: #00ba7c;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+.animate-scaleIn { animation: scaleIn 0.2s ease-out; }
+
+/* Typing Cursor */
+.typing::after {
+    content: '▋';
+    display: inline-block;
+    vertical-align: bottom;
+    animation: blink 1s step-start infinite;
+    color: var(--accent-blue);
+    margin-left: 2px;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Fix for marked.js lists */
+.bubble ul, .bubble ol { margin-left: 20px; margin-top: 5px; list-style: disc; }
+.bubble li { margin-bottom: 4px; }
+.bubble strong { color: #fff; font-weight: 700; }
+.bubble code { 
+    background: #222; padding: 2px 6px; border-radius: 4px; 
+    font-family: 'Consolas', monospace; font-size: 0.85em; color: #ff7b72;
+}

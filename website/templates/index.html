@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firzanta Motor OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'accent-blue': '#1d9bf0',
+                        'accent-red': '#f4212e',
+                        'accent-green': '#00ba7c',
+                        'dark-bg': '#000000',
+                        'dark-surface': '#0a0a0a',
+                        'dark-border': '#333333'
+                    },
+                    animation: { 'fadeIn': 'fadeIn 0.2s ease-out', 'scaleIn': 'scaleIn 0.2s ease-out' }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .bubble-ai { @apply bg-transparent text-[#e7e9ea] pl-0; }
+            .bubble-user { @apply bg-accent-blue text-white rounded-br-none; }
+            .terminal-note { @apply font-mono text-[0.85rem] bg-[#0d1117] border border-[#30363d] border-l-4 border-l-accent-green text-[#e6edf3] p-3 rounded mt-2 w-[95%] self-center whitespace-pre-wrap; }
+        }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body x-data="{ tab: 'chat', showMarket: false, showCrud: false, showConfirm: false, confirmLabel: '', confirmCmd: '' }" x-cloak class="bg-dark-bg text-gray-200 font-sans h-screen overflow-hidden">
+    <div class="flex flex-col h-screen max-w-[900px] mx-auto border-x border-dark-border relative bg-dark-bg">
+        <header class="h-[60px] px-5 flex justify-between items-center border-b border-dark-border bg-black/80 backdrop-blur-md z-50 sticky top-0">
+            <div class="flex items-center gap-2.5 font-bold text-lg tracking-tight"><span class="text-xl">🚗</span> Firzanta Motor OS</div>
+            <nav class="flex gap-5">
+                <button :class="tab === 'chat' ? 'text-accent-blue border-accent-blue' : 'text-gray-500 border-transparent'" class="text-sm font-semibold py-2.5 border-b-2 transition-all cursor-pointer" @click="tab = 'chat'">📟 Terminal</button>
+                <button :class="tab === 'database' ? 'text-accent-blue border-accent-blue' : 'text-gray-500 border-transparent'" class="text-sm font-semibold py-2.5 border-b-2 transition-all cursor-pointer" @click="tab = 'database'; $dispatch('load-tables')">📂 Database</button>
+            </nav>
+            <div class="text-[0.75rem] text-accent-green bg-accent-green/10 px-2.5 py-1 rounded-xl border border-accent-green/20 font-semibold">Online</div>
+        </header>
+
+        <!-- TAB CHAT -->
+        <div id="tab-chat" x-show="tab === 'chat'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" class="flex-1 flex flex-col overflow-hidden">
+            <div id="chat-box" class="flex-1 overflow-y-auto p-5 pb-[100px] flex flex-col gap-5 scrollbar-thin scrollbar-thumb-dark-border">
+                <div class="flex flex-col max-w-[85%] self-start animate-fadeIn">
+                    <div class="p-3 rounded-2xl text-[0.95rem] leading-relaxed break-words bubble-ai">
+                        <strong class="text-white font-bold">Selamat Datang, Bos Findo! 👋</strong><br>
+                        Sistem siap. Mau ngapain hari ini?
+                    </div>
+                </div>
+                <div class="flex flex-col max-w-[85%] self-start animate-fadeIn">
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        <button class="bg-transparent border border-dark-border text-accent-blue px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-blue/10 hover:border-accent-blue transition-all" @click="window.sendMessageToServer('Cek status showroom')">📊 Cek Status</button>
+                        <button class="bg-transparent border border-dark-border text-accent-blue px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-blue/10 hover:border-accent-blue transition-all" @click="window.sendMessageToServer('Lihat stok unit')">🚗 Lihat Stok</button>
+                        <button class="bg-transparent border border-dark-border text-accent-blue px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-blue/10 hover:border-accent-blue transition-all" @click="showMarket = !showMarket">🔍 Cari Pasar Online</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MARKET SEARCH PANEL -->
+            <div id="market-search-panel" x-show="showMarket" x-cloak x-transition class="border-t border-dark-border bg-[#0d1117]">
+                <div class="p-4 flex flex-col gap-2.5">
+                    <span class="text-[0.85rem] font-semibold text-accent-blue">🌐 Cari Mobil di Pasar Online</span>
+                    <div class="flex gap-2 items-center">
+                        <input type="text" id="market-query" class="flex-1 bg-black border border-dark-border text-white p-2.5 rounded-lg outline-none text-sm focus:border-accent-blue" placeholder="Contoh: Toyota Avanza bekas 2020..." />
+                        <label class="text-[0.8rem] text-gray-500 flex items-center gap-1 cursor-pointer whitespace-nowrap"><input type="checkbox" id="market-force"> Refresh</label>
+                        <button id="market-search-btn" class="bg-accent-blue text-white px-4 py-2.5 rounded-lg font-semibold hover:opacity-80 transition-all text-sm" onclick="doMarketSearch()">Cari</button>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <template x-for="q in ['Toyota Avanza', 'Honda Brio', 'Daihatsu Xenia']" :key="q">
+                            <span class="bg-[#16181c] border border-dark-border text-gray-500 px-2.5 py-1 rounded-xl text-[0.78rem] cursor-pointer hover:border-accent-blue hover:text-accent-blue" x-text="q.split(' ')[1]" @click="document.getElementById('market-query').value = q"></span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <div class="absolute bottom-0 left-0 right-0 p-5 bg-dark-bg border-t border-dark-border z-10">
+                <form id="chat-form" class="flex gap-2.5 bg-[#202327] px-5 py-3 rounded-[25px] border border-dark-border focus-within:border-accent-blue transition-all" autocomplete="off">
+                    <input type="text" id="user-input" class="flex-1 bg-transparent border-none text-white text-base outline-none" placeholder="Ketik perintah..." required>
+                    <button type="submit" id="send-btn" class="bg-transparent border-none text-accent-blue font-bold text-xl px-1 hover:opacity-80">➤</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- TAB DATABASE -->
+        <div id="tab-database" x-show="tab === 'database'" x-cloak x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" class="flex-1 flex flex-col p-5 overflow-hidden" @load-tables.window="window.loadTablesList()">
+            <div class="flex justify-between items-center mb-5">
+                <select id="table-selector" class="bg-[#202327] border border-dark-border text-white px-3 py-2 rounded-lg outline-none text-sm" onchange="window.loadTableData(this.value)">
+                    <option value="">-- Pilih Tabel --</option>
+                </select>
+                <div class="flex gap-2">
+                    <button class="bg-transparent border border-accent-red text-accent-red px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-red/10 transition-all" @click="window.resetDatabase()">🗑️ Reset Database</button>
+                    <button class="bg-transparent border border-dark-border text-accent-blue px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-blue/10 hover:border-accent-blue transition-all" @click="window.openCrudModal('add')">➕ Tambah Baris</button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-auto border border-dark-border rounded-lg bg-dark-surface">
+                <table id="db-table" class="w-full border-collapse text-[0.85rem]">
+                    <thead class="bg-[#16181c] text-gray-500 sticky top-0 z-10"><tr id="table-head"></tr></thead>
+                    <tbody id="table-body" class="divide-y divide-dark-border"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CRUD -->
+    <div id="crud-modal" x-show="showCrud" x-cloak class="fixed inset-0 bg-black/85 flex justify-center items-center z-[1000] backdrop-blur-sm">
+        <div class="bg-[#16181c] border border-dark-border rounded-2xl w-[90%] max-w-[500px] shadow-2xl overflow-hidden animate-scaleIn" @click.outside="showCrud = false">
+            <div class="p-4 px-5 border-b border-dark-border bg-[#1d1f23]"><h3 id="crud-title" class="text-gray-200 font-bold text-lg">Form Data</h3></div>
+            <form id="crud-form">
+                <div class="p-5 text-gray-400 text-sm max-h-[60vh] overflow-y-auto" id="crud-inputs"></div>
+                <div class="p-4 px-5 border-t border-dark-border flex justify-end gap-3 bg-[#16181c]">
+                    <button type="button" @click="showCrud = false" class="px-5 py-2.5 rounded-full text-sm font-semibold border border-[#536471] text-[#eff3f4] hover:bg-white/10">Batal</button>
+                    <button type="submit" class="px-5 py-2.5 rounded-full text-sm font-semibold bg-gray-200 text-black hover:bg-gray-300">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIRM -->
+    <div id="confirm-modal" x-show="showConfirm" x-cloak class="fixed inset-0 bg-black/85 flex justify-center items-center z-[1000] backdrop-blur-sm">
+        <div class="bg-[#16181c] border border-dark-border rounded-2xl w-[90%] max-w-[450px] shadow-2xl overflow-hidden animate-scaleIn">
+            <div class="p-4 px-5 border-b border-dark-border bg-[#1d1f23]"><h3 class="text-gray-200 font-bold text-lg flex items-center gap-2">⚠️ Konfirmasi Database</h3></div>
+            <div class="p-5">
+                <p x-text="confirmLabel" class="text-gray-400 text-sm leading-relaxed"></p>
+                <div class="mt-4 bg-black border border-dashed border-dark-border text-accent-green font-mono text-[0.85rem] p-3 rounded-lg break-all" x-text="confirmCmd"></div>
+            </div>
+            <div class="p-4 px-5 border-t border-dark-border flex justify-end gap-3 bg-[#16181c]">
+                <button @click="showConfirm = false" class="px-5 py-2.5 rounded-full text-sm font-semibold border border-[#536471] text-[#eff3f4] hover:bg-white/10">Batal</button>
+                <button id="btn-confirm-exec" class="px-5 py-2.5 rounded-full text-sm font-semibold bg-gray-200 text-black hover:bg-gray-300">Ya, Eksekusi</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
