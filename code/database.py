@@ -125,10 +125,39 @@ class DatabaseManager:
             )
         ''')
 
+        # 7. Tabel Chat History
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role TEXT,
+                content TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # Masukkan data default jika tabel kosong (id=1)
         cursor.execute('INSERT OR IGNORE INTO gamestate (id) VALUES (1)')
         cursor.execute('INSERT OR IGNORE INTO keuangan (id) VALUES (1)')
         
+        conn.commit()
+        conn.close()
+
+    def load_chat_history(self, limit=30):
+        conn = self._get_connection()
+        rows = conn.execute('SELECT role, content FROM chat_history ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
+        conn.close()
+        # Balikkan urutan agar kronologis (tua ke baru)
+        return [dict(r) for r in reversed(rows)]
+
+    def save_chat_message(self, role, content):
+        conn = self._get_connection()
+        conn.execute('INSERT INTO chat_history (role, content) VALUES (?, ?)', (role, content))
+        conn.commit()
+        conn.close()
+
+    def clear_chat_history(self):
+        conn = self._get_connection()
+        conn.execute('DELETE FROM chat_history')
         conn.commit()
         conn.close()
 

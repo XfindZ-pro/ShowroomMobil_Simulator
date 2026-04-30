@@ -187,7 +187,7 @@ class GameEngine:
         self.db.save_inventory(inv)
         return True, f"✅ Sukses! Harga **{inv[target_idx]['nama_mobil']}** diubah menjadi **Rp {harga_clean:,}**"
 
-    def beli_mobil(self, model, tahun, harga, kondisi):
+    def beli_mobil(self, model, tahun, harga, kondisi, plat=None):
         state = self.db.load_gamestate()
         fin = self.db.load_keuangan()
         inv = self.db.load_inventory()
@@ -198,16 +198,30 @@ class GameEngine:
         if available >= kapasitas: return False, "Garasi Penuh!"
 
         harga_clean = self._parse_int(harga)
-        if fin['kas'] < harga_clean: return False, "Kas tidak cukup."
+        if fin['kas'] < harga_clean: return False, f"Kas tidak cukup (Butuh Rp {harga_clean:,})"
             
         fin['kas'] -= harga_clean
         new_id = f"UNIT-{len(inv)+1:03d}"
+        
+        # Plat Default Surabaya (L) jika tidak ditentukan
+        if not plat:
+            plat = f"L {random.randint(1000,9999)} {random.choice(['XY', 'AZ', 'QR', 'SB'])}"
+
         new_car = {
-            "id": new_id, "nama_mobil": model, "plat": f"B {random.randint(1000,9999)} XY",
-            "transmisi": "Matic", "pajak": 2029, "kilometer": "50.000 km",
-            "status_unit": kondisi, "modal": harga_clean, "kepemilikan": "Showroom",
-            "harga_jual": 0, "mesin": "Bensin", "sisa_bbm": "10 L",
-            "tahun": self._parse_int(tahun), "status": "Tersedia",
+            "id": new_id, 
+            "nama_mobil": model, 
+            "plat": plat,
+            "transmisi": "Manual", # Default manual sesuai style motuba
+            "pajak": 2027, 
+            "kilometer": f"{random.randint(50,180)}.000 km",
+            "status_unit": kondisi, 
+            "modal": harga_clean, 
+            "kepemilikan": "Showroom",
+            "harga_jual": 0, 
+            "mesin": "Bensin", 
+            "sisa_bbm": "1/2 Tank",
+            "tahun": self._parse_int(tahun), 
+            "status": "Tersedia",
             "tanggal_beli": str(datetime.date.today())
         }
         inv.append(new_car)

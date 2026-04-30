@@ -21,16 +21,20 @@ app = Flask(__name__)
 
 
 CHAT_HISTORY = []
-
 try:
     db = DatabaseManager()
     engine = GameEngine()
+    CHAT_HISTORY = db.load_chat_history(30)
 except Exception as e:
     print(f"CRITICAL ERROR: {e}")
 
 @app.route('/')
 def home():
     return render_template('index.html')
+
+@app.route('/api/chat/history')
+def get_chat_history():
+    return jsonify(db.load_chat_history(30))
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -56,26 +60,15 @@ def chat():
     system_prompt = f"""
     {rules_text}
     
-    === INFORMASI WAKTU (PENTING) ===
-    Sekarang adalah: **{waktu_skrg}**
-    Tahun saat ini: **2026** (Bukan 2023 atau 2024).
-    Jangan pernah mengatakan fitur sedang dikembangkan atau data tidak ada karena "tahun belum sampai". 
-    Semua data pasar 2025/2026 tersedia melalui [ACTION:SEARCH_ONLINE].
-
-    === PERINTAH ANTI-HALUSINASI (MUTLAK) ===
-    1. **DATA ADALAH KEADILAN:** Gunakan HANYA data dari section "=== DATA REAL-TIME ===" di bawah.
-    2. **JANGAN MENGARANG TRANSAKSI:** Jika section "RIWAYAT TRANSAKSI (LOG)" hanya berisi "Sistem Showroom Diaktifkan", itu artinya **BELUM ADA PENJUALAN ATAU PEMBELIAN MOBIL**.
-    3. **VERIFIKASI SEBELUM MENJAWAB:**
-       - Apakah mobil ini ada di "LIST UNIT"? Jika tidak, jangan bilang ada.
-       - Apakah transaksi ini ada di "RIWAYAT TRANSAKSI"? Jika tidak, jangan bilang sudah terjadi.
-    4. **SISA KAS:** Gunakan angka Kas yang tertera. Jangan berimajinasi.
-
-    === STATUS FITUR SISTEM (PENTING) ===
-    - Fitur SEARCH_ONLINE: **AKTIF & SIAP PAKAI** — menggunakan DuckDuckGo real-time.
-    - Saat Bos menyebut "cari", "kulakan", "restock", "ada apa di pasaran", "OLX", "Mobil123" → WAJIB gunakan [ACTION:SEARCH_ONLINE|query].
-    - JANGAN katakan fitur sedang dalam pengembangan. Fitur ini SUDAH BERJALAN.
-    - Contoh yang BENAR: "Siap Bos! Saya carikan sekarang. [ACTION:SEARCH_ONLINE|Toyota Avanza bekas]"
-
+    === INFORMASI WAKTU ===
+    Sekarang: **{waktu_skrg}** (Tahun **2026**)
+    
+    === ATURAN MUTLAK (ANTI-HALUSINASI) ===
+    1. **DATA REAL-TIME ADALAH KEBENARAN TERTINGGI:** Abaikan pesan-pesan sebelumnya di history jika mereka menyebutkan stok mobil atau saldo yang BERBEDA dengan section "=== DATA REAL-TIME ===" di bawah ini.
+    2. **JANGAN PERCAYA HISTORY UNTUK STOK:** Jika history bilang kamu baru beli mobil tapi di "LIST UNIT (GARASI)" tertulis "(Garasi Kosong)", maka mobil itu TIDAK ADA. Jangan menampilkannya.
+    3. **SISA KAS:** Hanya gunakan angka dari DATA REAL-TIME.
+    4. **RIWAYAT TRANSAKSI:** Jika LOG kosong, jangan mengarang riwayat penjualan.
+    
     === DATA REAL-TIME ===
     {data_context}
     """
@@ -91,14 +84,9 @@ def chat():
         return jsonify({"response": f"❌ Error AI: {str(e)}", "system_msg": ""})
 
     # 3. Update History
-    # Simpan User Input
-    CHAT_HISTORY.append({'role': 'user', 'content': user_input})
-    # Simpan AI Reply
-    CHAT_HISTORY.append({'role': 'assistant', 'content': ai_reply})
-
-    # 4. Truncate History (Jaga agar tetap 15 pasang / 30 pesan terakhir)
-    if len(CHAT_HISTORY) > 30:
-        CHAT_HISTORY = CHAT_HISTORY[-30:]
+    db.save_chat_message('user', user_input)
+    db.save_chat_message('assistant', ai_reply)
+    CHAT_HISTORY = db.load_chat_history(30)
 
     # --- LOGIKA ACTION READ (Auto-Run) ---
     system_notification = ""
@@ -127,36 +115,65 @@ def chat():
 
 def handle_direct_execution(command):
     """Menulis ke database tanpa lewat LLM, tapi memberi info balik."""
-    parts = command.split(' ')
-    cmd_type = parts[0]
-    args = parts[1:]
-    
-    msg = ""
-    status = False
-
     try:
+        # Normalisasi perintah (bisa dipisah spasi atau pipe)
+        cmd_raw = command.strip()
+        if ' ' in cmd_raw:
+            cmd_type = cmd_raw.split(' ')[0]
+        elif '|' in cmd_raw:
+            cmd_type = cmd_raw.split('|')[0]
+        else:
+            cmd_type = cmd_raw
+
+        args_str = cmd_raw[len(cmd_type):].strip()
+        if args_str.startswith('|'): args_str = args_str[1:].strip()
+        
+        msg = f"Command '{cmd_type}' not recognized"
+        status = False
+
         if cmd_type == '/execute_setprice':
-            status, msg = engine.set_harga_unit(args[0], args[1])
+            parts = [p.strip() for p in args_str.split('|')] if '|' in args_str else args_str.split()
+            status, msg = engine.set_harga_unit(parts[0], parts[1])
         
         elif cmd_type == '/execute_sell':
-            status, msg = engine.jual_mobil(args[0], args[1])
+            parts = [p.strip() for p in args_str.split('|')] if '|' in args_str else args_str.split()
+            status, msg = engine.jual_mobil(parts[0], parts[1])
             
-        elif cmd_type == '/execute_buy':
-            # args: Model(join space), Tahun, Harga, Kondisi
-            kondisi = args[-1]
-            harga = args[-2]
-            tahun = args[-3]
-            model = " ".join(args[:-3])
-            status, msg = engine.beli_mobil(model, tahun, harga, kondisi)
+        elif cmd_type in ['/execute_buy', '/execute_restock']:
+            # Coba parsing dengan pipe (|) jika format baru
+            if '|' in args_str:
+                buy_args = [a.strip() for a in args_str.split('|')]
+                model = buy_args[0]
+                tahun = buy_args[1]
+                harga = buy_args[2]
+                kondisi = buy_args[3]
+                plat = buy_args[4] if len(buy_args) > 4 else None
+                status, msg = engine.beli_mobil(model, tahun, harga, kondisi, plat)
+            else:
+                # Regex parsing untuk format lama: "Model Spasi Tahun Harga Spasi Kondisi"
+                import re
+                match = re.search(r'^(.*?)\s+(\d{4})\s+(\d+)\s+(.+)$', args_str)
+                if match:
+                    model, tahun, harga, kondisi = match.groups()
+                else:
+                    # Fallback list based
+                    p = [p.strip() for p in args_str.split() if p.strip()]
+                    if len(p) >= 3:
+                        kondisi, harga, tahun = p[-1], p[-2], p[-3]
+                        model = " ".join(p[:-3])
+                    else:
+                        return jsonify({"response": "❌ Format /execute_buy tidak dikenal", "system_msg": ""})
+                
+                status, msg = engine.beli_mobil(model, tahun, harga, kondisi)
             
         elif cmd_type == '/execute_payroll':
             status, msg = engine.bayar_gaji()
 
-        # Respon teknis sukses
-        response_text = f"✅ **STATUS DATABASE:**\n{msg}\n\nSilakan pilih langkah selanjutnya:"
+        # Respon sukses/gagal dari engine
+        icon = "✅" if status else "⚠️"
+        response_text = f"{icon} **STATUS DATABASE:**\n{msg}\n\nSilakan pilih langkah selanjutnya:"
         response_text += "\n[UI:Lihat Stok|Cek stok unit sekarang]"
         response_text += "\n[UI:Laporan Keuangan|Cek saldo kas]"
-        response_text += "\n[UI:Cek Pasar|Cek harga pasar mobil lain]"
 
         return jsonify({
             "response": response_text,
@@ -164,7 +181,13 @@ def handle_direct_execution(command):
         })
 
     except Exception as e:
-        return jsonify({"response": f"❌ System Error: {str(e)}", "system_msg": ""})
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"ERROR EXECUTION: {error_detail}")
+        return jsonify({
+            "response": f"❌ Error Eksekusi: {str(e)}", 
+            "system_msg": f"SYSTEM ERROR: {str(e)}"
+        })
 
 # --- API SEARCH MARKET ONLINE ---
 @app.route('/api/search_market', methods=['POST'])
@@ -255,7 +278,10 @@ def upsert_row(table_name):
 def reset_db():
     try:
         engine.db.reset_database()
-        return jsonify({"status": "success", "message": "Database berhasil direset ke default."})
+        engine.db.clear_chat_history()
+        global CHAT_HISTORY
+        CHAT_HISTORY = []
+        return jsonify({"status": "success", "message": "Database & Chat berhasil direset."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

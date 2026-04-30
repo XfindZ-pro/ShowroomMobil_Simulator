@@ -35,7 +35,11 @@
         [x-cloak] { display: none !important; }
     </style>
 </head>
-<body x-data="{ tab: 'chat', showMarket: false, showCrud: false, showConfirm: false, confirmLabel: '', confirmCmd: '' }" x-cloak class="bg-dark-bg text-gray-200 font-sans h-screen overflow-hidden">
+<body x-data="{ tab: 'chat', showMarket: false, showCrud: false, showConfirm: false, confirmLabel: '', confirmCmd: '' }" 
+      @open-confirm.window="showConfirm = true; confirmLabel = $event.detail.label; confirmCmd = $event.detail.cmd"
+      @open-market.window="showMarket = true"
+      @open-db.window="tab = 'database'; $dispatch('load-tables')"
+      x-cloak class="bg-dark-bg text-gray-200 font-sans h-screen overflow-hidden">
     <div class="flex flex-col h-screen max-w-[900px] mx-auto border-x border-dark-border relative bg-dark-bg">
         <header class="h-[60px] px-5 flex justify-between items-center border-b border-dark-border bg-black/80 backdrop-blur-md z-50 sticky top-0">
             <div class="flex items-center gap-2.5 font-bold text-lg tracking-tight"><span class="text-xl">🚗</span> Firzanta Motor OS</div>
@@ -124,7 +128,7 @@
     </div>
 
     <!-- MODAL CONFIRM -->
-    <div id="confirm-modal" x-show="showConfirm" x-cloak class="fixed inset-0 bg-black/85 flex justify-center items-center z-[1000] backdrop-blur-sm">
+    <div id="confirm-modal" x-show="showConfirm" x-cloak @close-confirm.window="showConfirm = false" class="fixed inset-0 bg-black/85 flex justify-center items-center z-[1000] backdrop-blur-sm">
         <div class="bg-[#16181c] border border-dark-border rounded-2xl w-[90%] max-w-[450px] shadow-2xl overflow-hidden animate-scaleIn">
             <div class="p-4 px-5 border-b border-dark-border bg-[#1d1f23]"><h3 class="text-gray-200 font-bold text-lg flex items-center gap-2">⚠️ Konfirmasi Database</h3></div>
             <div class="p-5">

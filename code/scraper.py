@@ -258,8 +258,15 @@ def _format_summary(query: str, results: list, from_cache: bool = False) -> str:
     ]
 
     if valid_prices:
-        lines.append(f"> [Harga Termurah]: Rp {min(valid_prices):,}")
-        lines.append(f"> [Harga Rata-rata]: Rp {sum(valid_prices)//len(valid_prices):,}")
+        p_min = min(valid_prices)
+        p_max = max(valid_prices)
+        import random
+        # Pick a random "Recommended Price" based on the range (RNG Game feel)
+        p_rng = random.randint(p_min, p_max)
+        
+        lines.append(f"> [Harga Pasar (MIN)]: Rp {p_min:,}")
+        lines.append(f"> [Harga Pasar (MAX)]: Rp {p_max:,}")
+        lines.append(f"> [🔥 HARGA REKOMENDASI AI (RNG)]: **Rp {p_rng:,}**")
         lines.append("")
 
     lines.append("### [DAFTAR UNIT TERSEDIA]:")

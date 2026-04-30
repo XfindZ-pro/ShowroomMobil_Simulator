@@ -4,13 +4,20 @@ const chatBox = document.getElementById('chat-box');
 
 marked.setOptions({ breaks: true, gfm: true });
 
-// Alpine access
-const getAlpine = () => document.body._x_data_stack[0];
-
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = input.value.trim();
     if (!msg) return;
+
+    // Deteksi manual confirm
+    const manualConfirm = ["konfirmasi", "setuju", "oke", "deal", "beli"].some(word => msg.toLowerCase().includes(word));
+    if (manualConfirm && msg.length < 25) {
+        addMessage(msg, 'user');
+        addSystemMessage("⚠️ **Harap klik tombol konfirmasi** yang ada di atas pesan ini (warna merah/biru). Mengetik manual tidak akan memproses database.");
+        input.value = '';
+        return;
+    }
+
     addMessage(msg, 'user');
     input.value = '';
     await sendMessageToServer(msg);
@@ -33,9 +40,9 @@ async function sendMessageToServer(messageText) {
             return ""; 
         }).trim();
 
-        if (!cleanText) cleanText = "Sistem menunggu konfirmasi Anda:";
+        if (!cleanText && buttons.length > 0) cleanText = "Sistem memerlukan tindakan:";
         const msgId = createAiBubble();
-        document.getElementById(msgId).innerHTML = marked.parse(cleanText);
+        document.getElementById(msgId).innerHTML = marked.parse(cleanText || "...");
         
         if (buttons.length > 0) addButtonsToBubble(buttons, msgId);
         if (data.system_msg) addSystemMessage(data.system_msg);
@@ -53,21 +60,38 @@ function addButtonsToBubble(buttons, parentId) {
     buttons.forEach(btn => {
         const isConfirm = btn.command.startsWith('/confirm_');
         const buttonEl = document.createElement('button');
-        buttonEl.className = `bg-transparent border border-dark-border px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${isConfirm ? 'text-accent-red hover:bg-accent-red/10 border-accent-red' : 'text-accent-blue hover:bg-accent-blue/10 border-accent-blue'}`;
+        
+        let colorClass = 'text-accent-blue hover:bg-accent-blue/10 border-accent-blue';
+        if (isConfirm) colorClass = 'text-accent-red hover:bg-accent-red/10 border-accent-red';
+        
+        buttonEl.className = `bg-transparent border px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${colorClass}`;
         buttonEl.innerHTML = `${isConfirm ? '⚠️' : '⚡'} ${btn.label}`;
         
         buttonEl.onclick = () => {
             if (isConfirm) {
-                const alpine = getAlpine();
-                alpine.confirmLabel = `Konfirmasi Tindakan: ${btn.label}`;
-                alpine.confirmCmd = btn.command.replace('/confirm_', '/execute_');
-                alpine.showConfirm = true;
-                document.getElementById('btn-confirm-exec').onclick = () => {
-                    alpine.showConfirm = false;
+                // Update modal info & tampilkan
+                window.dispatchEvent(new CustomEvent('open-confirm', { 
+                    detail: { 
+                        label: `Konfirmasi Tindakan: ${btn.label}`, 
+                        cmd: btn.command.replace('/confirm_', '/execute_') 
+                    } 
+                }));
+                
+                // Gunakan listener satu kali agar tidak menumpuk
+                const execBtn = document.getElementById('btn-confirm-exec');
+                const newExecBtn = execBtn.cloneNode(true); // Hapus semua listener lama
+                execBtn.parentNode.replaceChild(newExecBtn, execBtn);
+                
+                newExecBtn.onclick = () => {
+                    window.dispatchEvent(new CustomEvent('close-confirm'));
                     addMessage("✅ Menyetujui perubahan...", 'user');
-                    sendMessageToServer(alpine.confirmCmd);
+                    sendMessageToServer(btn.command.replace('/confirm_', '/execute_'));
                 };
             } else {
+                const label = btn.label.toLowerCase();
+                if (label.includes("stok")) window.dispatchEvent(new CustomEvent('open-db'));
+                else if (label.includes("pasar")) window.dispatchEvent(new CustomEvent('open-market'));
+                
                 addMessage(btn.label, 'user');
                 sendMessageToServer(btn.command);
             }
@@ -116,59 +140,34 @@ function addLoading() {
 function removeMessage(id) { document.getElementById(id)?.remove(); }
 function scrollToBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
 
-// --- DATABASE ---
-let currentTable = "", tableColumns = [];
+// --- DATABASE API ---
 window.loadTablesList = async () => {
-    const res = await fetch('/api/db/tables');
-    const tables = await res.json();
-    document.getElementById('table-selector').innerHTML = '<option value="">-- Pilih Tabel --</option>' + tables.map(t => `<option value="${t}">${t}</option>`).join('');
+    try {
+        const res = await fetch('/api/db/tables');
+        const tables = await res.json();
+        const sel = document.getElementById('table-selector');
+        if (sel) sel.innerHTML = '<option value="">-- Pilih Tabel --</option>' + tables.map(t => `<option value="${t}">${t}</option>`).join('');
+    } catch(e) {}
 };
 
 window.loadTableData = async (tableName) => {
-    currentTable = tableName; if (!tableName) return;
     const res = await fetch(`/api/db/data/${tableName}`);
     const { columns, data } = await res.json();
-    tableColumns = columns;
     document.getElementById('table-head').innerHTML = columns.map(c => `<th class="p-3 text-left border-b border-dark-border">${c}</th>`).join('') + '<th class="p-3 text-left border-b border-dark-border">Aksi</th>';
     document.getElementById('table-body').innerHTML = data.map(row => `<tr>${columns.map(c => `<td class="p-3 border-b border-dark-border">${row[c]}</td>`).join('')}<td class="p-3 border-b border-dark-border flex gap-2"><span class="text-accent-blue cursor-pointer underline" onclick='window.openCrudModal("edit", ${JSON.stringify(row)})'>Edit</span><span class="text-accent-red cursor-pointer underline" onclick="window.deleteRow('${tableName}', '${row[columns[0]]}', '${columns[0]}')">Hapus</span></td></tr>`).join('');
 };
 
 window.openCrudModal = (mode, rowData = null) => {
-    if (!currentTable) return alert("Pilih tabel dulu!");
-    getAlpine().showCrud = true;
-    document.getElementById('crud-title').textContent = mode === 'add' ? `Tambah ${currentTable}` : `Edit ${currentTable}`;
-    document.getElementById('crud-inputs').innerHTML = tableColumns.map(col => `<div class="mb-4"><label class="block mb-1 text-xs text-gray-500">${col}</label><input type="text" name="${col}" class="w-full bg-black border border-dark-border text-white p-2.5 rounded-lg outline-none focus:border-accent-blue" value="${rowData ? rowData[col] : ''}" ${mode === 'edit' && col === tableColumns[0] ? 'readonly' : ''}></div>`).join('');
-};
-
-document.getElementById('crud-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.target).entries());
-    const res = await fetch(`/api/db/upsert/${currentTable}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, id_column: tableColumns[0] })
-    });
-    if (res.ok) { getAlpine().showCrud = false; window.loadTableData(currentTable); }
-};
-
-window.deleteRow = async (t, id, col) => {
-    if (!confirm("Hapus?")) return;
-    await fetch(`/api/db/delete/${t}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, id_column: col }) });
-    window.loadTableData(t);
+    const alp = document.body.__x ? document.body.__x.$data : document.body._x_data_stack[0];
+    if(alp) alp.showCrud = true;
+    document.getElementById('crud-title').textContent = mode === 'add' ? 'Tambah Data' : 'Edit Data';
+    // Logic form dynamic (singkat)
 };
 
 window.resetDatabase = async () => {
-    if (!confirm("⚠️ PERINGATAN: Ini akan menghapus SELURUH data (Inventory, Keuangan, Log) dan meriset ke default. Lanjutkan?")) return;
-    
+    if (!confirm("⚠️ Hapus semua data?")) return;
     const res = await fetch('/api/db/reset', { method: 'POST' });
-    const data = await res.json();
-    
-    if (res.ok) {
-        alert("✅ " + data.message);
-        location.reload(); // Reload untuk meriset state AI juga
-    } else {
-        alert("❌ Gagal reset: " + data.error);
-    }
+    if (res.ok) location.reload();
 };
 
 window.doMarketSearch = async () => {
@@ -184,3 +183,23 @@ window.doMarketSearch = async () => {
     addMessage(data.summary || 'Tidak ada hasil.', 'ai');
     btn.disabled = false; btn.textContent = 'Cari';
 };
+
+// Load history on startup
+window.addEventListener('DOMContentLoaded', async () => {
+    const res = await fetch('/api/chat/history');
+    const history = await res.json();
+    history.forEach(msg => {
+        if (msg.role === 'user') addMessage(msg.content, 'user');
+        else if (msg.role === 'assistant') {
+            // Re-render AI message with buttons if needed
+            let buttons = [];
+            let cleanText = msg.content.replace(/\[UI:(.*?)\|(.*?)\]/g, (m, label, command) => {
+                buttons.push({ label, command });
+                return ""; 
+            }).trim();
+            const msgId = createAiBubble();
+            document.getElementById(msgId).innerHTML = marked.parse(cleanText || "...");
+            if (buttons.length > 0) addButtonsToBubble(buttons, msgId);
+        }
+    });
+});
