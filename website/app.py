@@ -131,13 +131,17 @@ def handle_direct_execution(command):
         msg = f"Command '{cmd_type}' not recognized"
         status = False
 
-        if cmd_type == '/execute_setprice':
+        if cmd_type in ['/execute_setprice', '/execute_set_price']:
             parts = [p.strip() for p in args_str.split('|')] if '|' in args_str else args_str.split()
+            if len(parts) < 2: return jsonify({"response": "⚠️ Format salah. Butuh ID dan Harga.", "system_msg": ""})
             status, msg = engine.set_harga_unit(parts[0], parts[1])
         
-        elif cmd_type == '/execute_sell':
+        elif cmd_type in ['/execute_sell', '/execute_sell_inventory']:
             parts = [p.strip() for p in args_str.split('|')] if '|' in args_str else args_str.split()
-            status, msg = engine.jual_mobil(parts[0], parts[1])
+            if len(parts) < 1: return jsonify({"response": "⚠️ Format salah. Butuh ID unit.", "system_msg": ""})
+            # Jika harga tidak ada, kirim 0 agar engine fallback ke harga_jual di DB
+            harga_deal = parts[1] if len(parts) > 1 else "0"
+            status, msg = engine.jual_mobil(parts[0], harga_deal)
             
         elif cmd_type in ['/execute_buy', '/execute_restock']:
             # Coba parsing dengan pipe (|) jika format baru

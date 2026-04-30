@@ -238,13 +238,31 @@ class GameEngine:
         
         target_idx = -1
         for i, c in enumerate(inv):
-            if c['id'].lower() == car_id.lower() and c.get('status') == 'Tersedia':
+            # Cek ID (Case Insensitive)
+            if c['id'].lower() == car_id.lower():
                 target_idx = i
                 break
         
-        if target_idx == -1: return False, "Unit tidak tersedia."
+        if target_idx == -1: 
+            return False, f"Unit ID '{car_id}' tidak ditemukan di inventory."
         
+        if inv[target_idx].get('status') != 'Tersedia':
+            return False, f"Unit {inv[target_idx]['nama_mobil']} statusnya bukan 'Tersedia'."
+
+        # Validasi Harga Jual (Pesan Bos: Harus diatur dulu)
+        current_asking_price = inv[target_idx].get('harga_jual', 0)
+        if current_asking_price <= 0:
+            return False, f"⚠️ Harga jual belum diatur untuk {inv[target_idx]['nama_mobil']}. Silakan atur harga jual terlebih dahulu!"
+
         hj_clean = self._parse_int(harga_deal)
+        
+        # Fallback ke harga_jual di database jika input 0/kosong
+        if hj_clean <= 0:
+            hj_clean = inv[target_idx].get('harga_jual', 0)
+        
+        if hj_clean <= 0:
+            return False, f"⚠️ Harga deal Rp 0 tidak valid. Silakan tentukan harga deal atau atur harga jual unit!"
+
         profit = hj_clean - inv[target_idx].get('modal', 0)
         
         fin['kas'] += hj_clean
@@ -257,6 +275,21 @@ class GameEngine:
         self.db.save_keuangan(fin)
         self.db.save_inventory(inv)
         return True, f"Terjual! {nama_mobil} laku Rp {hj_clean:,}"
+
+    def set_harga_unit(self, car_id, harga_baru):
+        inv = self.db.load_inventory()
+        target_idx = -1
+        for i, c in enumerate(inv):
+            if c['id'].lower() == car_id.lower():
+                target_idx = i
+                break
+        
+        if target_idx == -1: return False, f"Unit ID {car_id} tidak ditemukan."
+        
+        harga_clean = self._parse_int(harga_baru)
+        inv[target_idx]['harga_jual'] = harga_clean
+        self.db.save_inventory(inv)
+        return True, f"Harga jual {inv[target_idx]['nama_mobil']} diatur ke Rp {harga_clean:,}"
 
     def bayar_gaji(self):
         state = self.db.load_gamestate()

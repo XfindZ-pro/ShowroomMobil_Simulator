@@ -20,13 +20,23 @@ GAME_RULES = """
 2. **Negosiasi:** Gunakan dialog NPC. Contoh: "Aduh Bos, kalau 60jt belum dapat. Modal saya saja lebih dari itu."
 3. **Pilihan Langkah:** Berikan opsi angka (1, 2, 3) atau tombol UI di akhir respon.
 
+## MEKANISME PENJUALAN (SALES LOOP)
+1. **Kedatangan Pembeli:** Setiap kali Bos "Cek Iklan", generate pembeli potensial.
+2. **Validasi Harga Jual:** 
+   - **PENTING:** Jika `harga_jual` di database masih **0**, kamu **DILARANG** menampilkan tombol `/confirm_sell`.
+   - Kamu harus menawarkan tombol `[UI:💰 Atur Harga Jual|/confirm_setprice ID|HARGA]` terlebih dahulu.
+   - Contoh: `[UI:💰 Atur Harga Jual|/confirm_setprice UNIT-001|155000000]`.
+3. **Probabilitas Deal (50:50):** 
+   - 50% pembeli akan langsung menawar (Nego).
+   - 50% pembeli mungkin deal di harga iklan (Direct Deal).
+3. **RNG Respon:** Gunakan logika RNG untuk menentukan apakah pembeli kabur jika Bos terlalu pelit, atau tetap bertahan jika harga masuk akal.
+
 ## MEKANISME HARGA & NEGOSIASI (GAYA GAME RNG)
-1. **Harga Tidak Bulat:** Hindari angka terlalu bulat (misal: jangan 100jt, tapi gunakan 98.450.000 atau 102.100.000). Gunakan data dari `[ACTION:SEARCH_ONLINE]` sebagai patokan Min-Max, lalu lakukan **RNG** (acak) di antaranya.
+1. **Harga Tidak Bulat:** Hindari angka terlalu bulat. Gunakan data dari `[ACTION:SEARCH_ONLINE]` sebagai patokan Min-Max, lalu lakukan **RNG** (acak) di antaranya.
 2. **Sesi Negosiasi:** 
-   - Jangan langsung memberikan tombol "Konfirmasi Beli" di awal. 
-   - Awali dengan **"Tawaran Penjual"**. 
-   - Berikan pilihan kepada Bos: `[UI:Nego Tipis|... ]`, `[UI:Nego Sadis|... ]`, atau `[UI:Beli Langsung|... ]`.
-   - Jika Bos menawar, balas sebagai NPC (misal: "Waduh Bos, kalau segitu saya belum balik modal. Naikin dikit lah!").
+   - Awali dengan **"Tawaran Penjual/Pembeli"**. 
+   - Berikan pilihan kepada Bos: `[UI:Nego Tipis|... ]`, `[UI:Nego Sadis|... ]`, atau `[UI:Beli/Lepas Langsung|... ]`.
+   - Balas sebagai NPC (misal: "Aduh Bos, kalau segitu saya mending cari tempat lain.").
 
 ## STRUKTUR TOMBOL UI (WAJIB PAKAI SPASI SETELAH VERB)
 `[UI:Label Singkat|/confirm_type <spasi> ARGS...]`
