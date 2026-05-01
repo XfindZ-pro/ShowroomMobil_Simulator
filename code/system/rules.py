@@ -17,6 +17,8 @@ GAME_RULES = """
 
 ## FORMAT OUTPUT GAME
 1. **Market Feed:** Tampilkan detail mobil (Model, Tahun, Plat L/S/W, Pajak, KM, Kondisi/PR).
+## ATURAN KHUSUS (SIMULASI)
+1. **Pindah Lokasi:** Jika Bos minta pindah lokasi, kamu **WAJIB** memberikan tombol `[UI:📍 Konfirmasi Pindah|/execute_move <LOKASI>]`. Jangan hanya menjawab "Sudah pindah" secara teks.
 2. **Negosiasi:** Gunakan dialog NPC. Contoh: "Aduh Bos, kalau 60jt belum dapat. Modal saya saja lebih dari itu."
 3. **Pilihan Langkah:** Berikan opsi angka (1, 2, 3) atau tombol UI di akhir respon.
 

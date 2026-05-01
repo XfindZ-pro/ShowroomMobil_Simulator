@@ -33,11 +33,17 @@
             .terminal-note { @apply font-mono text-[0.85rem] bg-[#0d1117] border border-[#30363d] border-l-4 border-l-accent-green text-[#e6edf3] p-3 rounded mt-2 w-[95%] self-center whitespace-pre-wrap; }
         }
         [x-cloak] { display: none !important; }
-    </style>
+        #command-suggestions {
+        box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+        backdrop-filter: blur(10px);
+    }
+</style>
 </head>
 <body x-data="{ tab: 'chat', showMarket: false, showCrud: false, showConfirm: false, confirmLabel: '', confirmCmd: '' }" 
       @open-confirm.window="showConfirm = true; confirmLabel = $event.detail.label; confirmCmd = $event.detail.cmd"
       @open-market.window="showMarket = true"
+      @open-crud.window="showCrud = true"
+      @close-crud.window="showCrud = false"
       @open-db.window="tab = 'database'; $dispatch('load-tables')"
       x-cloak class="bg-dark-bg text-gray-200 font-sans h-screen overflow-hidden">
     <div class="flex flex-col h-screen max-w-[900px] mx-auto border-x border-dark-border relative bg-dark-bg">
@@ -64,6 +70,7 @@
                         <button class="bg-transparent border border-dark-border text-accent-blue px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-blue/10 hover:border-accent-blue transition-all" @click="window.sendMessageToServer('Cek status showroom')">📊 Cek Status</button>
                         <button class="bg-transparent border border-dark-border text-accent-blue px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-blue/10 hover:border-accent-blue transition-all" @click="window.sendMessageToServer('Lihat stok unit')">🚗 Lihat Stok</button>
                         <button class="bg-transparent border border-dark-border text-accent-blue px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-blue/10 hover:border-accent-blue transition-all" @click="showMarket = !showMarket">🔍 Cari Pasar Online</button>
+                        <button class="bg-transparent border border-accent-red text-accent-red px-4 py-2 rounded-full text-sm font-medium hover:bg-accent-red/10 border-accent-red/50 transition-all" onclick="window.resetChat()">🧹 Reset Chat</button>
                     </div>
                 </div>
             </div>
@@ -86,8 +93,23 @@
             </div>
 
             <div class="absolute bottom-0 left-0 right-0 p-5 bg-dark-bg border-t border-dark-border z-10">
+                <!-- SUGGESTIONS -->
+                <div id="command-suggestions" x-data="{ suggestions: [] }" 
+                     @update-suggestions.window="suggestions = $event.detail"
+                     x-show="suggestions.length > 0" x-cloak
+                     class="absolute bottom-[85px] left-5 right-5 bg-[#16181c]/90 border border-dark-border rounded-xl shadow-2xl overflow-hidden z-20 backdrop-blur-md">
+                    <template x-for="s in suggestions" :key="s.cmd">
+                        <div class="p-3 px-5 text-sm hover:bg-accent-blue/10 hover:text-accent-blue cursor-pointer border-b border-dark-border last:border-none flex justify-between items-center"
+                             @click="window.selectSuggestion(s)">
+                            <span class="font-mono font-bold" x-text="s.cmd"></span>
+                            <span class="text-[0.7rem] text-gray-500 italic" x-text="s.desc"></span>
+                        </div>
+                    </template>
+                </div>
+
                 <form id="chat-form" class="flex gap-2.5 bg-[#202327] px-5 py-3 rounded-[25px] border border-dark-border focus-within:border-accent-blue transition-all" autocomplete="off">
-                    <input type="text" id="user-input" class="flex-1 bg-transparent border-none text-white text-base outline-none" placeholder="Ketik perintah..." required>
+                    <input type="text" id="user-input" class="flex-1 bg-transparent border-none text-white text-base outline-none" placeholder="Ketik perintah..." required
+                           oninput="window.handleCommandInput(this.value)">
                     <button type="submit" id="send-btn" class="bg-transparent border-none text-accent-blue font-bold text-xl px-1 hover:opacity-80">➤</button>
                 </form>
             </div>
@@ -116,7 +138,10 @@
     <!-- MODAL CRUD -->
     <div id="crud-modal" x-show="showCrud" x-cloak class="fixed inset-0 bg-black/85 flex justify-center items-center z-[1000] backdrop-blur-sm">
         <div class="bg-[#16181c] border border-dark-border rounded-2xl w-[90%] max-w-[500px] shadow-2xl overflow-hidden animate-scaleIn" @click.outside="showCrud = false">
-            <div class="p-4 px-5 border-b border-dark-border bg-[#1d1f23]"><h3 id="crud-title" class="text-gray-200 font-bold text-lg">Form Data</h3></div>
+            <div class="p-4 px-5 border-b border-dark-border bg-[#1d1f23] flex justify-between items-center">
+                <h3 id="crud-title" class="text-gray-200 font-bold text-lg">Form Data</h3>
+                <button @click="showCrud = false" class="text-gray-500 hover:text-white text-xl">&times;</button>
+            </div>
             <form id="crud-form">
                 <div class="p-5 text-gray-400 text-sm max-h-[60vh] overflow-y-auto" id="crud-inputs"></div>
                 <div class="p-4 px-5 border-t border-dark-border flex justify-end gap-3 bg-[#16181c]">

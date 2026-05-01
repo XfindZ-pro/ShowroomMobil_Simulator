@@ -22,4 +22,9 @@ print("\nINVENTORY COUNT:")
 cursor.execute("SELECT count(*) FROM inventory")
 print(cursor.fetchone()[0])
 
+print("\nASET:")
+cursor.execute("SELECT * FROM aset")
+for a in cursor.fetchall():
+    print(a)
+
 conn.close()

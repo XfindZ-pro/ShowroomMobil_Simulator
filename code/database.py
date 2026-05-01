@@ -54,6 +54,8 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE gamestate ADD COLUMN luas_display INTEGER DEFAULT 200")
         if "luas_kantor" not in gs_cols:
             cursor.execute("ALTER TABLE gamestate ADD COLUMN luas_kantor INTEGER DEFAULT 100")
+        if "kapasitas" not in gs_cols:
+            cursor.execute("ALTER TABLE gamestate ADD COLUMN kapasitas INTEGER DEFAULT 10")
 
         # 2. Tabel Inventory
         cursor.execute('''
@@ -139,6 +141,21 @@ class DatabaseManager:
         cursor.execute('INSERT OR IGNORE INTO gamestate (id) VALUES (1)')
         cursor.execute('INSERT OR IGNORE INTO keuangan (id) VALUES (1)')
         
+        # Tambah Aset Tanah Default (500 m2)
+        cursor.execute("SELECT count(*) FROM aset WHERE nama_aset = 'Tanah Utama'")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('''
+                INSERT INTO aset (nama_aset, jumlah, satuan, kategori, keterangan)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ('Tanah Utama', 500, 'm2', 'Properti', 'Lahan utama showroom Firzanta Motor'))
+        
+        conn.commit()
+        conn.close()
+
+    def reset_chat_history(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM chat_history")
         conn.commit()
         conn.close()
 
@@ -171,6 +188,23 @@ class DatabaseManager:
         state['karyawan'] = [dict(r) for r in conn.execute('SELECT * FROM karyawan').fetchall()]
         state['transaksi_log'] = [r['log_text'] for r in conn.execute('SELECT log_text FROM transaksi_log ORDER BY id DESC').fetchall()]
         
+        # SINKRONISASI LUAS TANAH DARI TABEL ASET
+        # Ambil semua aset kategori Properti/Tanah
+        total_tanah = conn.execute("SELECT SUM(jumlah) FROM aset WHERE nama_aset LIKE '%Tanah%' OR kategori = 'Properti'").fetchone()[0] or 0
+        
+        if total_tanah > 0:
+            state['luas_tanah'] = total_tanah
+            # Rekalkulasi Kapasitas (Display 70%, Kantor 30%)
+            state['luas_display'] = int(total_tanah * 0.7)
+            state['luas_kantor'] = int(total_tanah * 0.3)
+            # Kapasitas unit (Asumsi 1 mobil butuh 20m2 termasuk manuver)
+            state['kapasitas'] = int(state['luas_display'] / 20)
+            
+            # Update ke DB agar tersimpan permanen
+            conn.execute("UPDATE gamestate SET luas_tanah=?, luas_display=?, luas_kantor=?, kapasitas=? WHERE id=1", 
+                         (state['luas_tanah'], state['luas_display'], state['luas_kantor'], state['kapasitas']))
+            conn.commit()
+
         # Mapping SQLite Boolean
         state['is_setup'] = bool(state.get('is_setup'))
         

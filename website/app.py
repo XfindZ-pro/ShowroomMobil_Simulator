@@ -36,6 +36,13 @@ def home():
 def get_chat_history():
     return jsonify(db.load_chat_history(30))
 
+@app.route('/api/chat/reset', methods=['POST'])
+def reset_chat_history():
+    global CHAT_HISTORY
+    db.reset_chat_history()
+    CHAT_HISTORY = []
+    return jsonify({"status": "success"})
+
 @app.route('/chat', methods=['POST'])
 def chat():
     global CHAT_HISTORY
@@ -45,8 +52,16 @@ def chat():
 
     # --- JALUR EKSEKUSI LANGSUNG (WRITE DB VIA POP-UP) ---
     # Bypass history LLM untuk eksekusi teknis agar tidak mengotori konteks
-    if user_input.startswith('/execute_'):
-        return handle_direct_execution(user_input)
+    DIRECT_CMDS = ['/execute_', '/status', '/buy ', '/sell ', '/setprice ', '/move ', '/inspect ', '/reset_chat', '/help']
+    if any(user_input.startswith(c) for c in DIRECT_CMDS):
+        # Normalisasi shorthand -> execute prefix
+        shorthand_map = {'/status': '/execute_status', '/buy ': '/execute_buy ', '/sell ': '/execute_sell ', '/setprice ': '/execute_setprice ', '/move ': '/execute_move ', '/inspect ': '/execute_inspect ', '/reset_chat': '/execute_reset_chat'}
+        mapped = user_input
+        for k, v in shorthand_map.items():
+            if user_input.startswith(k):
+                mapped = user_input.replace(k, v, 1)
+                break
+        return handle_direct_execution(mapped)
 
     # --- JALUR CHAT NORMAL (LLM + MEMORY) ---
     state = db.load_gamestate()
@@ -133,45 +148,73 @@ def handle_direct_execution(command):
 
         if cmd_type in ['/execute_setprice', '/execute_set_price']:
             parts = [p.strip() for p in args_str.split('|')] if '|' in args_str else args_str.split()
-            if len(parts) < 2: return jsonify({"response": "⚠️ Format salah. Butuh ID dan Harga.", "system_msg": ""})
+            if len(parts) < 2:
+                return jsonify({"response": "⚠️ Format: `/setprice [ID] [HARGA]`", "system_msg": ""})
             status, msg = engine.set_harga_unit(parts[0], parts[1])
         
         elif cmd_type in ['/execute_sell', '/execute_sell_inventory']:
             parts = [p.strip() for p in args_str.split('|')] if '|' in args_str else args_str.split()
-            if len(parts) < 1: return jsonify({"response": "⚠️ Format salah. Butuh ID unit.", "system_msg": ""})
-            # Jika harga tidak ada, kirim 0 agar engine fallback ke harga_jual di DB
+            if not parts or not parts[0]:
+                return jsonify({"response": "⚠️ Format: `/sell [ID] [HARGA_DEAL]`", "system_msg": ""})
             harga_deal = parts[1] if len(parts) > 1 else "0"
             status, msg = engine.jual_mobil(parts[0], harga_deal)
-            
+
         elif cmd_type in ['/execute_buy', '/execute_restock']:
-            # Coba parsing dengan pipe (|) jika format baru
             if '|' in args_str:
                 buy_args = [a.strip() for a in args_str.split('|')]
-                model = buy_args[0]
-                tahun = buy_args[1]
-                harga = buy_args[2]
-                kondisi = buy_args[3]
+                if len(buy_args) < 4:
+                    return jsonify({"response": "⚠️ Format: `/buy MODEL|TAHUN|HARGA|KONDISI|PLAT`", "system_msg": ""})
+                model, tahun, harga, kondisi = buy_args[0], buy_args[1], buy_args[2], buy_args[3]
                 plat = buy_args[4] if len(buy_args) > 4 else None
                 status, msg = engine.beli_mobil(model, tahun, harga, kondisi, plat)
             else:
-                # Regex parsing untuk format lama: "Model Spasi Tahun Harga Spasi Kondisi"
-                import re
                 match = re.search(r'^(.*?)\s+(\d{4})\s+(\d+)\s+(.+)$', args_str)
                 if match:
                     model, tahun, harga, kondisi = match.groups()
+                    status, msg = engine.beli_mobil(model, tahun, harga, kondisi)
                 else:
-                    # Fallback list based
-                    p = [p.strip() for p in args_str.split() if p.strip()]
-                    if len(p) >= 3:
-                        kondisi, harga, tahun = p[-1], p[-2], p[-3]
-                        model = " ".join(p[:-3])
-                    else:
-                        return jsonify({"response": "❌ Format /execute_buy tidak dikenal", "system_msg": ""})
-                
-                status, msg = engine.beli_mobil(model, tahun, harga, kondisi)
-            
+                    return jsonify({"response": "❌ Format: `/buy MODEL TAHUN HARGA KONDISI` atau pakai pipe `|`", "system_msg": ""})
+
+        elif cmd_type == '/execute_move':
+            if not args_str:
+                return jsonify({"response": "⚠️ Format: `/move [KOTA]`", "system_msg": ""})
+            status, msg = engine.pindah_lokasi(args_str.strip())
+
+        elif cmd_type == '/execute_status':
+            ctx = engine.get_context_string()
+            return jsonify({"response": f"📊 **Status Real-Time Firzanta Motor:**\n\n{ctx}", "system_msg": ""})
+
+        elif cmd_type == '/execute_inspect':
+            if not args_str:
+                return jsonify({"response": "⚠️ Format: `/inspect [ID_UNIT]`\nContoh: `/inspect UNIT-001`", "system_msg": ""})
+            result = engine.inspect_unit(args_str.strip())
+            return jsonify({"response": result, "system_msg": ""})
+
+        elif cmd_type == '/execute_reset_chat':
+            db.reset_chat_history()
+            global CHAT_HISTORY
+            CHAT_HISTORY = []
+            return jsonify({"response": "🧹 Riwayat percakapan berhasil dibersihkan.", "system_msg": ""})
+
         elif cmd_type == '/execute_payroll':
             status, msg = engine.bayar_gaji()
+
+        elif cmd_type == '/help':
+            help_text = """
+📌 **DAFTAR PERINTAH FIRZANTA MOTOR**
+
+| Perintah | Fungsi |
+|---|---|
+| `/status` | Cek saldo, stok, kondisi real-time |
+| `/buy MODEL\|TAHUN\|HARGA\|KONDISI\|PLAT` | Beli unit baru |
+| `/sell ID [HARGA_DEAL]` | Jual unit dari stok |
+| `/setprice ID HARGA` | Atur harga jual iklan |
+| `/move KOTA` | Pindah lokasi showroom |
+| `/inspect ID` | Cek detail kondisi unit |
+| `/reset_chat` | Bersihkan riwayat percakapan |
+| `/help` | Tampilkan daftar perintah ini |
+"""
+            return jsonify({"response": help_text, "system_msg": ""})
 
         # Respon sukses/gagal dari engine
         icon = "✅" if status else "⚠️"
@@ -241,7 +284,7 @@ def get_table_data(table_name):
 @app.route('/api/db/delete/<table_name>', methods=['POST'])
 def delete_row(table_name):
     row_id = request.json.get('id')
-    id_col = request.json.get('id_column', 'id')
+    id_col = request.json.get('id_col', 'id')
     conn = get_db_conn()
     try:
         conn.execute(f"DELETE FROM {table_name} WHERE {id_col} = ?", (row_id,))
@@ -252,28 +295,45 @@ def delete_row(table_name):
     finally:
         conn.close()
 
-@app.route('/api/db/upsert/<table_name>', methods=['POST'])
-def upsert_row(table_name):
-    row_data = request.json.get('data')
-    id_col = request.json.get('id_column', 'id')
+@app.route('/api/db/add/<table_name>', methods=['POST'])
+def add_row(table_name):
+    row_data = request.json
     conn = get_db_conn()
     try:
-        columns = list(row_data.keys())
-        values = list(row_data.values())
-        
-        placeholders = ", ".join(["?"] * len(columns))
-        update_placeholders = ", ".join([f"{col}=excluded.{col}" for col in columns if col != id_col])
-        
-        query = f"""
-            INSERT INTO {table_name} ({", ".join(columns)}) 
-            VALUES ({placeholders})
-            ON CONFLICT({id_col}) DO UPDATE SET {update_placeholders}
-        """
-        conn.execute(query, values)
+        cols = ", ".join(row_data.keys())
+        placeholders = ", ".join(["?"] * len(row_data))
+        conn.execute(f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})", list(row_data.values()))
         conn.commit()
         return jsonify({"status": "success"})
     except Exception as e:
-        print(f"Upsert Error: {e}")
+        return jsonify({"error": str(e)}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/db/edit/<table_name>', methods=['POST'])
+def edit_row(table_name):
+    row_data = request.json
+    # Asumsikan kolom pertama adalah primary key (id)
+    conn = get_db_conn()
+    try:
+        cursor = conn.execute(f"SELECT * FROM {table_name} LIMIT 0")
+        id_col = cursor.description[0][0] # Ambil PK (biasanya 'id')
+        row_id = row_data.get(id_col)
+        
+        # Konversi ke int jika kolomnya adalah 'id'
+        if id_col.lower() == 'id':
+            try: row_id = int(row_id)
+            except: pass
+        
+        cols = [f"{k} = ?" for k in row_data.keys() if k != id_col]
+        vals = [v for k, v in row_data.items() if k != id_col]
+        vals.append(row_id)
+        
+        query = f"UPDATE {table_name} SET {', '.join(cols)} WHERE {id_col} = ?"
+        conn.execute(query, vals)
+        conn.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
         return jsonify({"error": str(e)}), 400
     finally:
         conn.close()

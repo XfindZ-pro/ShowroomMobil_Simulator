@@ -291,6 +291,12 @@ class GameEngine:
         self.db.save_inventory(inv)
         return True, f"Harga jual {inv[target_idx]['nama_mobil']} diatur ke Rp {harga_clean:,}"
 
+    def pindah_lokasi(self, lokasi_baru):
+        state = self.db.load_gamestate()
+        state['lokasi'] = lokasi_baru
+        self.db.save_gamestate(state)
+        return True, f"Showroom Firzanta Motor resmi pindah ke {lokasi_baru}!"
+
     def bayar_gaji(self):
         state = self.db.load_gamestate()
         fin = self.db.load_keuangan()
